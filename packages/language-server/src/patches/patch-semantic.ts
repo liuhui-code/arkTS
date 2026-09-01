@@ -3,7 +3,7 @@ import type { Hover, LanguageServicePlugin, TextDocument } from '@volar/language
 import { Range } from '@volar/language-server'
 import { Uri } from '@vstils/core'
 import * as ets from 'ohos-typescript'
-import { convertClassificationsToSemanticTokens } from 'volar-service-typescript/lib/semanticFeatures/semanticTokens'
+import { convertClassificationsToSemanticTokens } from 'volar-service-typescript/lib/semanticFeatures/semanticTokens.js'
 import { ContextUtil } from '../utils/finder'
 
 function getMarkdownJSDoc(node: ets.HasJSDoc): string[] {
