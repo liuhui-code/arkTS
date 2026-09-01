@@ -12,6 +12,7 @@ import { createRelativePattern, Uri } from '@vstils/core'
 import { FileType } from '@vstils/fs'
 import defu from 'defu'
 import * as ets from 'ohos-typescript'
+import { removeIdenticalDeclarationCopies } from '../utils/dedupe-declarations'
 
 export class ConfigResolver {
   constructor(
@@ -152,8 +153,13 @@ export class ConfigResolver {
 
     const declarationsUri = Uri.joinPath(Uri.file(this.getEtsLoaderPath()), 'declarations')
     const globalFiles = await this.fs.glob(createRelativePattern(declarationsUri, '**/*.d.ts')).then(uris => uris.map(uri => uri.fsPath))
+    const uniqueGlobalFiles = await removeIdenticalDeclarationCopies(
+      [...dtsFiles, ...detsFiles],
+      globalFiles,
+      async file => (await this.fs.readFile(Uri.file(file))).toString(),
+    )
 
-    return [...dtsFiles, ...detsFiles, ...globalFiles, ...await this.getTsdkLib()].filter((item, index, self) => self.indexOf(item) === index && Boolean(item))
+    return [...dtsFiles, ...detsFiles, ...uniqueGlobalFiles, ...await this.getTsdkLib()].filter((item, index, self) => self.indexOf(item) === index && Boolean(item))
   }
 
   private getFileNameWithoutExtension(fileNameWithExtension: string): string {
