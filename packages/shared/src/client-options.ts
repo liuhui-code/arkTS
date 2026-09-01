@@ -7,5 +7,7 @@ export interface EtsServerClientOptions {
     sdkPath: string | undefined
     /** The currently hms sdk path. If not exists the lsp will not work. */
     hmsPath: string | undefined
+    /** Advertise semantic tokens to the client. Disable for memory-constrained editors. */
+    semanticTokens?: boolean
   }
 }

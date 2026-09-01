@@ -84,6 +84,10 @@ export class ConfigResolver {
       : this.params.initializationOptions?.ets?.hmsPath
   }
 
+  getSemanticTokensEnabled(): boolean {
+    return this.params.initializationOptions?.ets?.semanticTokens !== false
+  }
+
   getEtsLoaderPath(): string {
     return path.resolve(this.getSdkPath() ?? process.cwd(), 'ets', 'build-tools', 'ets-loader')
   }
