@@ -19,6 +19,7 @@ import { createNodeFileSystemProvider } from '@vstils/fs/node'
 import * as ETS from 'ohos-typescript'
 import { create as createTypeScriptServices } from 'volar-service-typescript'
 import { ConfigResolver } from './classes/config-resolver'
+import { diagnosticLog, getDiagnosticLogFile, instrumentLanguageServices, instrumentProjectHost, startMemoryDiagnostics } from './diagnostics'
 import { ProjectDetectorManagerService } from './classes/project-manager'
 import { patchResolver } from './patches/patch-resolver'
 import { patchSemantic } from './patches/patch-semantic'
@@ -29,10 +30,39 @@ patchResolver(ets)
 
 const connection = createConnection()
 const server = createServer(connection)
+let projectId = 0
+
+startMemoryDiagnostics()
+
+server.documents.onDidOpen(({ document }) => {
+  diagnosticLog('did-open', {
+    uri: document.uri,
+    languageId: document.languageId,
+    version: document.version,
+    textBytes: Buffer.byteLength(document.getText(), 'utf8'),
+  })
+})
+server.documents.onDidChangeContent(({ document }) => diagnosticLog('did-change', { uri: document.uri, version: document.version }))
+server.documents.onDidClose(({ document }) => diagnosticLog('did-close', { uri: document.uri }))
 
 connection.onRequest('ets/formatDocument', async e => format(e.textDocument.uri, e.textDocument.text))
 
 connection.onInitialize(async (params) => {
+  diagnosticLog('initialize-start', {
+    processId: params.processId,
+    rootUri: params.rootUri,
+    workspaceFolders: params.workspaceFolders,
+    clientName: params.clientInfo?.name,
+    clientVersion: params.clientInfo?.version,
+    initializationOptions: {
+      ets: params.initializationOptions?.ets,
+      typescript: params.initializationOptions?.typescript
+        ? { tsdk: params.initializationOptions.typescript.tsdk }
+        : undefined,
+      compilerOptionKeys: Object.keys(params.initializationOptions?.compilerOptions ?? {}),
+    },
+    diagnosticLogFile: getDiagnosticLogFile(),
+  })
   const diagnosticMessages = await resolveDiagnosticMessages(params, logger, fileUri)
   const projectDetectorManagerService = new ProjectDetectorManagerService(connection, params, logger)
   const fsRegistry = await createFileSystemRegistry()
@@ -41,6 +71,7 @@ connection.onInitialize(async (params) => {
   const configurator = configuration.toArkTSServicesOptions()
   const typescriptServices = createTypeScriptServices(ets as unknown as typeof import('typescript'))
   patchSemantic(typescriptServices, configurator) // patch typescript semantic service
+  instrumentLanguageServices(typescriptServices, configuration.getSdkPath(), configuration.getHmsSdkPath())
   const arktsServices = await createArkTServices(configurator, ets)
 
   delete typescriptServices[1].capabilities.documentFormattingProvider
@@ -53,12 +84,14 @@ connection.onInitialize(async (params) => {
 
   const mergedSettings = await configuration.toCompilationSettings()
 
-  return server.initialize(
+  const initializeResult = await server.initialize(
     params,
     createTypeScriptProject(
       ets as unknown as typeof import('typescript'),
       diagnosticMessages,
       async (ctx) => {
+        const currentProjectId = ++projectId
+        instrumentProjectHost(ctx, currentProjectId, configuration.getSdkPath(), configuration.getHmsSdkPath())
         ctx.projectHost.getCompilationSettings = () => mergedSettings as import('typescript').CompilerOptions
 
         return {
@@ -90,9 +123,17 @@ connection.onInitialize(async (params) => {
       ...arktsServices,
     ],
   )
+
+  if (!configuration.getSemanticTokensEnabled()) {
+    delete initializeResult.capabilities.semanticTokensProvider
+    logger.getConsola().info('Semantic tokens are disabled by initialization options.')
+  }
+
+  return initializeResult
 })
 
 connection.onInitialized(() => {
+  diagnosticLog('initialized')
   logger.getConsola().info('ETS Language Server is initialized.')
   server.initialized()
 })
