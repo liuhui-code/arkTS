@@ -53,7 +53,7 @@ connection.onInitialize(async (params) => {
 
   const mergedSettings = await configuration.toCompilationSettings()
 
-  return server.initialize(
+  const initializeResult = await server.initialize(
     params,
     createTypeScriptProject(
       ets as unknown as typeof import('typescript'),
@@ -90,6 +90,13 @@ connection.onInitialize(async (params) => {
       ...arktsServices,
     ],
   )
+
+  if (!configuration.getSemanticTokensEnabled()) {
+    delete initializeResult.capabilities.semanticTokensProvider
+    logger.getConsola().info('Semantic tokens are disabled by initialization options.')
+  }
+
+  return initializeResult
 })
 
 connection.onInitialized(() => {
